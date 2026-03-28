@@ -1,25 +1,21 @@
 package handlers
 
 import (
-	"encoding/json"
-	"github.com/gorilla/mux"
 	"net/http"
 	"practicum-6/models"
 	"strconv"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 var books = make(map[int]models.Book)
 var nextBookID = 1
 
-func GetBooks(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	q := r.URL.Query()
-
-	categoryFilter := strings.ToLower(q.Get("category"))
+func GetBooks(c *gin.Context) {
+	categoryFilter := strings.ToLower(c.Query("category"))
 	authorIDFilter := 0
-	if raw := q.Get("author_id"); raw != "" {
+	if raw := c.Query("author_id"); raw != "" {
 		if id, err := strconv.Atoi(raw); err == nil {
 			authorIDFilter = id
 		}
@@ -27,12 +23,12 @@ func GetBooks(w http.ResponseWriter, r *http.Request) {
 
 	page := 1
 	limit := 10
-	if p := q.Get("page"); p != "" {
+	if p := c.Query("page"); p != "" {
 		if v, err := strconv.Atoi(p); err == nil && v > 0 {
 			page = v
 		}
 	}
-	if l := q.Get("limit"); l != "" {
+	if l := c.Query("limit"); l != "" {
 		if v, err := strconv.Atoi(l); err == nil && v > 0 {
 			limit = v
 		}
@@ -62,71 +58,63 @@ func GetBooks(w http.ResponseWriter, r *http.Request) {
 		end = total
 	}
 	paginated := filtered[start:end]
-
 	if paginated == nil {
 		paginated = []models.Book{}
 	}
 
-	response := map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"page":  page,
 		"limit": limit,
 		"total": total,
 		"data":  paginated,
-	}
-	json.NewEncoder(w).Encode(response)
+	})
 }
 
-func GetBookByID(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	params := mux.Vars(r)
-	id, err := strconv.Atoi(params["id"])
+func GetBookByID(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		http.Error(w, "Invalid book ID", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid book ID"})
 		return
 	}
 
 	book, exists := books[id]
 	if !exists {
-		http.Error(w, "Book not found", http.StatusNotFound)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
 		return
 	}
 
-	json.NewEncoder(w).Encode(book)
+	c.JSON(http.StatusOK, book)
 }
 
-func AddBook(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+func AddBook(c *gin.Context) {
 	var book models.Book
-	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
-		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&book); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON: " + err.Error()})
 		return
 	}
 
 	if strings.TrimSpace(book.Title) == "" {
-		http.Error(w, "title is required", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
 		return
 	}
 	if book.AuthorID <= 0 {
-		http.Error(w, "author_id is required and must be positive", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "author_id must be positive"})
 		return
 	}
 	if book.CategoryID <= 0 {
-		http.Error(w, "category_id is required and must be positive", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "category_id must be positive"})
 		return
 	}
 	if book.Price <= 0 {
-		http.Error(w, "price must be greater than 0", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "price must be greater than 0"})
 		return
 	}
-
 	if _, exists := GetAuthorByID(book.AuthorID); !exists {
-		http.Error(w, "author not found", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "author not found"})
 		return
 	}
 	if _, exists := GetCategoryByID(book.CategoryID); !exists {
-		http.Error(w, "category not found", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "category not found"})
 		return
 	}
 
@@ -134,66 +122,59 @@ func AddBook(w http.ResponseWriter, r *http.Request) {
 	nextBookID++
 	books[book.ID] = book
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(book)
+	c.JSON(http.StatusCreated, book)
 }
 
-func UpdateBook(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	params := mux.Vars(r)
-	id, err := strconv.Atoi(params["id"])
+func UpdateBook(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		http.Error(w, "Invalid book ID", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid book ID"})
 		return
 	}
-
 	if _, exists := books[id]; !exists {
-		http.Error(w, "Book not found", http.StatusNotFound)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
 		return
 	}
 
 	var updated models.Book
-	if err := json.NewDecoder(r.Body).Decode(&updated); err != nil {
-		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&updated); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON: " + err.Error()})
 		return
 	}
 
 	if strings.TrimSpace(updated.Title) == "" {
-		http.Error(w, "title is required", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
 		return
 	}
 	if updated.AuthorID <= 0 {
-		http.Error(w, "author_id is required and must be positive", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "author_id must be positive"})
 		return
 	}
 	if updated.CategoryID <= 0 {
-		http.Error(w, "category_id is required and must be positive", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "category_id must be positive"})
 		return
 	}
 	if updated.Price <= 0 {
-		http.Error(w, "price must be greater than 0", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "price must be greater than 0"})
 		return
 	}
 
 	updated.ID = id
 	books[id] = updated
-	json.NewEncoder(w).Encode(updated)
+	c.JSON(http.StatusOK, updated)
 }
 
-func DeleteBook(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	id, err := strconv.Atoi(params["id"])
+func DeleteBook(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		http.Error(w, "Invalid book ID", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid book ID"})
 		return
 	}
-
 	if _, exists := books[id]; !exists {
-		http.Error(w, "Book not found", http.StatusNotFound)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
 		return
 	}
 
 	delete(books, id)
-	w.WriteHeader(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
 }

@@ -1,10 +1,11 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"practicum-6/models"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 var authors = make(map[int]models.Author)
@@ -15,27 +16,23 @@ func GetAuthorByID(id int) (models.Author, bool) {
 	return a, exists
 }
 
-func GetAuthors(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+func GetAuthors(c *gin.Context) {
 	list := make([]models.Author, 0, len(authors))
 	for _, a := range authors {
 		list = append(list, a)
 	}
-	json.NewEncoder(w).Encode(list)
+	c.JSON(http.StatusOK, list)
 }
 
-func AddAuthor(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+func AddAuthor(c *gin.Context) {
 	var author models.Author
-	if err := json.NewDecoder(r.Body).Decode(&author); err != nil {
-		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&author); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON: " + err.Error()})
 		return
 	}
 
 	if strings.TrimSpace(author.Name) == "" {
-		http.Error(w, "name is required", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
 		return
 	}
 
@@ -43,6 +40,5 @@ func AddAuthor(w http.ResponseWriter, r *http.Request) {
 	nextAuthorID++
 	authors[author.ID] = author
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(author)
+	c.JSON(http.StatusCreated, author)
 }

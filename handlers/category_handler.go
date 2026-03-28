@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"encoding/json"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"practicum-6/models"
 	"strings"
@@ -15,27 +15,23 @@ func GetCategoryByID(id int) (models.Category, bool) {
 	return c, exists
 }
 
-func GetCategories(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+func GetCategories(c *gin.Context) {
 	list := make([]models.Category, 0, len(categories))
-	for _, c := range categories {
-		list = append(list, c)
+	for _, cat := range categories {
+		list = append(list, cat)
 	}
-	json.NewEncoder(w).Encode(list)
+	c.JSON(http.StatusOK, list)
 }
 
-func AddCategory(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+func AddCategory(c *gin.Context) {
 	var category models.Category
-	if err := json.NewDecoder(r.Body).Decode(&category); err != nil {
-		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&category); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON: " + err.Error()})
 		return
 	}
 
 	if strings.TrimSpace(category.Name) == "" {
-		http.Error(w, "name is required", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
 		return
 	}
 
@@ -43,6 +39,5 @@ func AddCategory(w http.ResponseWriter, r *http.Request) {
 	nextCategoryID++
 	categories[category.ID] = category
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(category)
+	c.JSON(http.StatusCreated, category)
 }
