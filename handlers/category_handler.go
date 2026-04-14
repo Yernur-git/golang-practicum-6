@@ -1,26 +1,18 @@
 package handlers
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
+	"practicum-6/config"
 	"practicum-6/models"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
-var categories = make(map[int]models.Category)
-var nextCategoryID = 1
-
-func GetCategoryByID(id int) (models.Category, bool) {
-	c, exists := categories[id]
-	return c, exists
-}
-
 func GetCategories(c *gin.Context) {
-	list := make([]models.Category, 0, len(categories))
-	for _, cat := range categories {
-		list = append(list, cat)
-	}
-	c.JSON(http.StatusOK, list)
+	var categories []models.Category
+	config.DB.Find(&categories)
+	c.JSON(http.StatusOK, categories)
 }
 
 func AddCategory(c *gin.Context) {
@@ -35,9 +27,6 @@ func AddCategory(c *gin.Context) {
 		return
 	}
 
-	category.ID = nextCategoryID
-	nextCategoryID++
-	categories[category.ID] = category
-
+	config.DB.Create(&category)
 	c.JSON(http.StatusCreated, category)
 }

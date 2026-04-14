@@ -2,26 +2,17 @@ package handlers
 
 import (
 	"net/http"
+	"practicum-6/config"
 	"practicum-6/models"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-var authors = make(map[int]models.Author)
-var nextAuthorID = 1
-
-func GetAuthorByID(id int) (models.Author, bool) {
-	a, exists := authors[id]
-	return a, exists
-}
-
 func GetAuthors(c *gin.Context) {
-	list := make([]models.Author, 0, len(authors))
-	for _, a := range authors {
-		list = append(list, a)
-	}
-	c.JSON(http.StatusOK, list)
+	var authors []models.Author
+	config.DB.Find(&authors)
+	c.JSON(http.StatusOK, authors)
 }
 
 func AddAuthor(c *gin.Context) {
@@ -36,9 +27,6 @@ func AddAuthor(c *gin.Context) {
 		return
 	}
 
-	author.ID = nextAuthorID
-	nextAuthorID++
-	authors[author.ID] = author
-
+	config.DB.Create(&author)
 	c.JSON(http.StatusCreated, author)
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"practicum-6/config"
 	"practicum-6/models"
 	"strconv"
 	"strings"
@@ -9,17 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var books = make(map[int]models.Book)
-var nextBookID = 1
-
 func GetBooks(c *gin.Context) {
 	categoryFilter := strings.ToLower(c.Query("category"))
-	authorIDFilter := 0
-	if raw := c.Query("author_id"); raw != "" {
-		if id, err := strconv.Atoi(raw); err == nil {
-			authorIDFilter = id
-		}
-	}
+	authorIDFilter := c.Query("author_id")
 
 	page := 1
 	limit := 10
@@ -34,51 +27,44 @@ func GetBooks(c *gin.Context) {
 		}
 	}
 
-	var filtered []models.Book
-	for _, book := range books {
-		if authorIDFilter != 0 && book.AuthorID != authorIDFilter {
-			continue
-		}
-		if categoryFilter != "" {
-			cat, exists := GetCategoryByID(book.CategoryID)
-			if !exists || strings.ToLower(cat.Name) != categoryFilter {
-				continue
-			}
-		}
-		filtered = append(filtered, book)
+	query := config.DB.Model(&models.Book{})
+
+	if authorIDFilter != "" {
+		query = query.Where("author_id = ?", authorIDFilter)
 	}
 
-	total := len(filtered)
-	start := (page - 1) * limit
-	end := start + limit
-	if start > total {
-		start = total
+	if categoryFilter != "" {
+		var category models.Category
+		if err := config.DB.Where("LOWER(name) = ?", categoryFilter).First(&category).Error; err != nil {
+			c.JSON(http.StatusOK, gin.H{"page": page, "limit": limit, "total": 0, "data": []models.Book{}})
+			return
+		}
+		query = query.Where("category_id = ?", category.ID)
 	}
-	if end > total {
-		end = total
-	}
-	paginated := filtered[start:end]
-	if paginated == nil {
-		paginated = []models.Book{}
+
+	var total int64
+	query.Count(&total)
+
+	var books []models.Book
+	query.Offset((page - 1) * limit).Limit(limit).Find(&books)
+
+	if books == nil {
+		books = []models.Book{}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"page":  page,
 		"limit": limit,
 		"total": total,
-		"data":  paginated,
+		"data":  books,
 	})
 }
 
 func GetBookByID(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid book ID"})
-		return
-	}
+	id := c.Param("id")
 
-	book, exists := books[id]
-	if !exists {
+	var book models.Book
+	if err := config.DB.First(&book, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
 		return
 	}
@@ -97,11 +83,11 @@ func AddBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
 		return
 	}
-	if book.AuthorID <= 0 {
+	if book.AuthorID == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "author_id must be positive"})
 		return
 	}
-	if book.CategoryID <= 0 {
+	if book.CategoryID == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "category_id must be positive"})
 		return
 	}
@@ -109,29 +95,28 @@ func AddBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "price must be greater than 0"})
 		return
 	}
-	if _, exists := GetAuthorByID(book.AuthorID); !exists {
+
+	var author models.Author
+	if err := config.DB.First(&author, book.AuthorID).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "author not found"})
 		return
 	}
-	if _, exists := GetCategoryByID(book.CategoryID); !exists {
+
+	var category models.Category
+	if err := config.DB.First(&category, book.CategoryID).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "category not found"})
 		return
 	}
 
-	book.ID = nextBookID
-	nextBookID++
-	books[book.ID] = book
-
+	config.DB.Create(&book)
 	c.JSON(http.StatusCreated, book)
 }
 
 func UpdateBook(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid book ID"})
-		return
-	}
-	if _, exists := books[id]; !exists {
+	id := c.Param("id")
+
+	var book models.Book
+	if err := config.DB.First(&book, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
 		return
 	}
@@ -146,11 +131,11 @@ func UpdateBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
 		return
 	}
-	if updated.AuthorID <= 0 {
+	if updated.AuthorID == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "author_id must be positive"})
 		return
 	}
-	if updated.CategoryID <= 0 {
+	if updated.CategoryID == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "category_id must be positive"})
 		return
 	}
@@ -159,22 +144,25 @@ func UpdateBook(c *gin.Context) {
 		return
 	}
 
-	updated.ID = id
-	books[id] = updated
-	c.JSON(http.StatusOK, updated)
+	config.DB.Model(&book).Updates(models.Book{
+		Title:      updated.Title,
+		AuthorID:   updated.AuthorID,
+		CategoryID: updated.CategoryID,
+		Price:      updated.Price,
+	})
+
+	c.JSON(http.StatusOK, book)
 }
 
 func DeleteBook(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid book ID"})
-		return
-	}
-	if _, exists := books[id]; !exists {
+	id := c.Param("id")
+
+	var book models.Book
+	if err := config.DB.First(&book, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
 		return
 	}
 
-	delete(books, id)
+	config.DB.Delete(&book)
 	c.Status(http.StatusNoContent)
 }

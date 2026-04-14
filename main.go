@@ -2,12 +2,15 @@ package main
 
 import (
 	"log"
+	"practicum-6/config"
 	"practicum-6/handlers"
 
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
+	config.ConnectDatabase()
+
 	r := gin.Default()
 
 	r.GET("/authors", handlers.GetAuthors)
