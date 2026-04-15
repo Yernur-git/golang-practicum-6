@@ -17,8 +17,13 @@ func ConnectDatabase() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	// Auto migrate your models
-	database.AutoMigrate(&models.Author{}, &models.Category{}, &models.Book{})
+	database.AutoMigrate(
+		&models.Author{},
+		&models.Category{},
+		&models.Book{},
+		&models.FavoriteBook{},
+		&models.User{},
+	)
 
 	DB = database
 }
